@@ -10,6 +10,7 @@ This repo was simplified from a larger SSH/persistent-session terminal app into 
 - Native text editing + selection + long-press (`UITextView`)
 - Syntax highlighting for Swift-like text
 - Existing keyboard accessory mechanism (`KeyboardAccessoryView`) wired to editor actions
+- Toolbar actions focused on editing: arrows, tab/enter, move line up/down, indent/outdent
 
 ## What this version intentionally drops
 
@@ -104,4 +105,4 @@ import PlaygroundSupport
 PlaygroundPage.current.setLiveView(LeanEditorView())
 ```
 
-You now have the same editor stack (tabs + syntax highlighting + existing accessory toolbar mechanism) running without SSH/rtach/network dependencies.
+You now have the same editor stack (tabs + syntax highlighting + existing accessory toolbar with line-move and indent tools) running without SSH/rtach/network dependencies.

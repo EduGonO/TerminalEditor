@@ -35,7 +35,11 @@ struct LeanEditorView: View {
             KeyboardAccessoryBarRepresentable(
                 onKeyData: { editorBridge.handleKeyData($0) },
                 onDismissKeyboard: { editorBridge.dismissKeyboard() },
-                onShowKeyboard: { editorBridge.showKeyboard() }
+                onShowKeyboard: { editorBridge.showKeyboard() },
+                onMoveLineUp: { editorBridge.moveCurrentLineUp() },
+                onMoveLineDown: { editorBridge.moveCurrentLineDown() },
+                onIndentLine: { editorBridge.indentCurrentLine() },
+                onUnindentLine: { editorBridge.unindentCurrentLine() }
             )
             .frame(height: 74)
             .padding(.horizontal, 8)
