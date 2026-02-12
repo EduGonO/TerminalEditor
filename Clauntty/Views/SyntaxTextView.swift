@@ -15,7 +15,6 @@ struct SyntaxTextView: UIViewRepresentable {
         textView.smartQuotesType = .no
         textView.smartInsertDeleteType = .no
         textView.backgroundColor = .clear
-        textView.font = .monospacedSystemFont(ofSize: 15, weight: .regular)
         textView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
         textView.text = text
         applyHighlighting(to: textView)
@@ -25,8 +24,9 @@ struct SyntaxTextView: UIViewRepresentable {
     func updateUIView(_ uiView: UITextView, context: Context) {
         if uiView.text != text {
             uiView.text = text
-            applyHighlighting(to: uiView)
         }
+
+        applyHighlighting(to: uiView)
 
         if isFocused {
             bridge.activeTextView = uiView
@@ -57,7 +57,8 @@ struct SyntaxTextView: UIViewRepresentable {
         let attr = NSMutableAttributedString(string: full)
         let baseRange = NSRange(location: 0, length: attr.length)
 
-        attr.addAttribute(.font, value: UIFont.monospacedSystemFont(ofSize: 15, weight: .regular), range: baseRange)
+        let editorFont = bridge.editorFont()
+        attr.addAttribute(.font, value: editorFont, range: baseRange)
         attr.addAttribute(.foregroundColor, value: UIColor.label, range: baseRange)
 
         color(pattern: "\\b(func|let|var|if|else|return|struct|class|import|enum|protocol|extension)\\b", in: full, attr: attr, color: .systemBlue)

@@ -11,6 +11,7 @@ This repo was simplified from a larger SSH/persistent-session terminal app into 
 - Syntax highlighting for Swift-like text
 - Existing keyboard accessory mechanism (`KeyboardAccessoryView`) wired to editor actions
 - Toolbar actions focused on editing: arrows, tab/enter, move line up/down, indent/outdent
+- Font controls in top bar: tap font button to cycle Mono/Sans/Serif, long-press to pick from menu, plus +/- for size
 
 ## What this version intentionally drops
 
@@ -105,4 +106,4 @@ import PlaygroundSupport
 PlaygroundPage.current.setLiveView(LeanEditorView())
 ```
 
-You now have the same editor stack (tabs + syntax highlighting + existing accessory toolbar with line-move and indent tools) running without SSH/rtach/network dependencies.
+You now have the same editor stack (tabs + syntax highlighting + line-move/indent toolbar + font family/size controls) running without SSH/rtach/network dependencies.

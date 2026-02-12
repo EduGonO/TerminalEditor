@@ -1,9 +1,41 @@
 import UIKit
 import SwiftUI
 
+enum EditorFontStyle: String, CaseIterable {
+    case mono
+    case sans
+    case serif
+
+    var label: String {
+        switch self {
+        case .mono: return "Mono"
+        case .sans: return "Sans"
+        case .serif: return "Serif"
+        }
+    }
+
+    func font(size: CGFloat) -> UIFont {
+        switch self {
+        case .mono:
+            return .monospacedSystemFont(ofSize: size, weight: .regular)
+        case .sans:
+            return .systemFont(ofSize: size, weight: .regular)
+        case .serif:
+            return .systemFont(ofSize: size, weight: .regular, design: .serif)
+                ?? .systemFont(ofSize: size, weight: .regular)
+        }
+    }
+}
+
 @MainActor
 final class EditorBridge: ObservableObject {
     weak var activeTextView: UITextView?
+
+    @Published private(set) var fontStyle: EditorFontStyle = .mono
+    @Published private(set) var fontSize: CGFloat = 15
+
+    private let minFontSize: CGFloat = 11
+    private let maxFontSize: CGFloat = 28
 
     func dismissKeyboard() {
         activeTextView?.resignFirstResponder()
@@ -11,6 +43,28 @@ final class EditorBridge: ObservableObject {
 
     func showKeyboard() {
         activeTextView?.becomeFirstResponder()
+    }
+
+    func cycleFontStyle() {
+        let all = EditorFontStyle.allCases
+        guard let idx = all.firstIndex(of: fontStyle) else { return }
+        fontStyle = all[(idx + 1) % all.count]
+    }
+
+    func setFontStyle(_ style: EditorFontStyle) {
+        fontStyle = style
+    }
+
+    func increaseFontSize() {
+        fontSize = min(maxFontSize, fontSize + 1)
+    }
+
+    func decreaseFontSize() {
+        fontSize = max(minFontSize, fontSize - 1)
+    }
+
+    func editorFont() -> UIFont {
+        fontStyle.font(size: fontSize)
     }
 
     func insert(_ string: String) {
@@ -49,23 +103,21 @@ final class EditorBridge: ObservableObject {
     }
 
     func indentCurrentLine() {
-        transformCurrentLines { "    " + $0 }
+        transformCurrentLines { line in
+            ("    " + line, 4)
+        }
     }
 
     func unindentCurrentLine() {
         transformCurrentLines { line in
-            if line.hasPrefix("    ") { return String(line.dropFirst(4)) }
-            if line.hasPrefix("\t") { return String(line.dropFirst()) }
-            return line
+            if line.hasPrefix("    ") {
+                return (String(line.dropFirst(4)), -4)
+            }
+            if line.hasPrefix("\t") {
+                return (String(line.dropFirst()), -1)
+            }
+            return (line, 0)
         }
-    }
-
-    func undo() {
-        activeTextView?.undoManager?.undo()
-    }
-
-    func redo() {
-        activeTextView?.undoManager?.redo()
     }
 
     func handleKeyData(_ data: Data) {
@@ -87,12 +139,9 @@ final class EditorBridge: ObservableObject {
     private func moveCurrentLine(offset: Int) {
         guard let textView = activeTextView else { return }
         let text = textView.text ?? ""
-        let ns = text as NSString
-        let selected = textView.selectedRange
-        let lineRange = ns.lineRange(for: selected)
 
         let lines = text.components(separatedBy: "\n")
-        let currentLineIndex = lineIndex(containingUTF16Location: selected.location, in: text)
+        let currentLineIndex = lineIndex(containingUTF16Location: textView.selectedRange.location, in: text)
         let targetIndex = currentLineIndex + offset
         guard targetIndex >= 0, targetIndex < lines.count else { return }
 
@@ -104,32 +153,72 @@ final class EditorBridge: ObservableObject {
         let newCaret = lineStartUTF16Offset(for: targetIndex, in: mutableLines)
         textView.selectedRange = NSRange(location: min(newCaret, (newText as NSString).length), length: 0)
         textView.delegate?.textViewDidChange?(textView)
-
-        // keep compiler aware we intentionally derived line range for selected block semantics
-        _ = lineRange
     }
 
-    private func transformCurrentLines(_ transform: (String) -> String) {
+    private func transformCurrentLines(_ transform: (String) -> (line: String, leadingDelta: Int)) {
         guard let textView = activeTextView else { return }
         let text = textView.text ?? ""
         let lines = text.components(separatedBy: "\n")
-        let selected = textView.selectedRange
-
-        let startLine = lineIndex(containingUTF16Location: selected.location, in: text)
-        let endLocation = max(selected.location, selected.location + max(0, selected.length - 1))
-        let endLine = lineIndex(containingUTF16Location: endLocation, in: text)
-
         guard !lines.isEmpty else { return }
 
+        let selected = textView.selectedRange
+        let endLocation = max(selected.location, selected.location + max(0, selected.length - 1))
+
+        let startLine = lineIndex(containingUTF16Location: selected.location, in: text)
+        let endLine = lineIndex(containingUTF16Location: endLocation, in: text)
+
         var mutableLines = lines
+        var leadingDeltas: [Int: Int] = [:]
+
         for i in startLine...min(endLine, mutableLines.count - 1) {
-            mutableLines[i] = transform(mutableLines[i])
+            let result = transform(mutableLines[i])
+            mutableLines[i] = result.line
+            leadingDeltas[i] = result.leadingDelta
         }
 
         let newText = mutableLines.joined(separator: "\n")
+
+        let newStart = adjustedLocation(
+            selected.location,
+            lineDeltas: leadingDeltas,
+            originalLines: lines
+        )
+        let newEndExclusive = adjustedLocation(
+            selected.location + selected.length,
+            lineDeltas: leadingDeltas,
+            originalLines: lines
+        )
+
         textView.text = newText
-        textView.selectedRange = selected
+        let clampedStart = max(0, min(newStart, (newText as NSString).length))
+        let clampedEnd = max(clampedStart, min(newEndExclusive, (newText as NSString).length))
+        textView.selectedRange = NSRange(location: clampedStart, length: clampedEnd - clampedStart)
         textView.delegate?.textViewDidChange?(textView)
+    }
+
+    private func adjustedLocation(_ location: Int, lineDeltas: [Int: Int], originalLines: [String]) -> Int {
+        var running = 0
+        for (lineIndex, line) in originalLines.enumerated() {
+            let lineLength = (line as NSString).length
+            let lineStart = running
+            let lineEndExclusive = running + lineLength
+
+            if location <= lineEndExclusive {
+                guard let delta = lineDeltas[lineIndex], delta != 0 else { return location }
+                let column = location - lineStart
+
+                if delta > 0 {
+                    return location + delta
+                }
+
+                let removed = abs(delta)
+                return column <= removed ? lineStart : location - removed
+            }
+
+            running += lineLength + 1
+        }
+
+        return location
     }
 
     private func lineIndex(containingUTF16Location location: Int, in text: String) -> Int {
