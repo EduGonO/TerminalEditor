@@ -7,24 +7,32 @@ This repo was simplified from a larger SSH/persistent-session terminal app into 
 ## What this version keeps
 
 - Multi-tab editing with swipe gestures
-- Keyboard toolbar with quick-insert keys (Esc, Tab, arrows, ^C/^L/^D, undo/redo)
-- Native iOS text selection/long-press behavior (`UITextView`)
-- Basic syntax highlighting for Swift-like source text
-- Lightweight SwiftUI + UIKit bridge architecture
+- Native text editing + selection + long-press (`UITextView`)
+- Syntax highlighting for Swift-like text
+- Existing keyboard accessory mechanism (`KeyboardAccessoryView`) wired to editor actions
 
 ## What this version intentionally drops
 
 - SSH connectivity
-- rtach session persistence and reconnect protocol
+- rtach session persistence/reconnect protocol
 - Port forwarding + in-app web tabs
 - SSH key management/authentication
 - Connection/session/server management workflows
 
-## Core files
+## Editor files used in this mode
 
-- `Clauntty/ClaunttyApp.swift`
-- `Clauntty/ContentView.swift`
-- `Clauntty/Views/LeanEditorView.swift`
+These are the exact files that make the editor-only flow work:
+
+- App shell
+  - `Clauntty/ClaunttyApp.swift`
+  - `Clauntty/ContentView.swift`
+- Editor surface
+  - `Clauntty/Views/LeanEditorView.swift`
+  - `Clauntty/Views/SyntaxTextView.swift`
+  - `Clauntty/Views/EditorBridge.swift`
+- Existing toolbar mechanism reused
+  - `Clauntty/Views/KeyboardAccessoryView.swift`
+  - `Clauntty/Views/KeyboardAccessoryBarRepresentable.swift`
 
 ## Run in Xcode (app)
 
@@ -32,18 +40,68 @@ This repo was simplified from a larger SSH/persistent-session terminal app into 
 2. Select the `Clauntty` scheme.
 3. Run on an iOS Simulator (iOS 17+).
 
-## Run in a Swift Playground
+## Run in an empty iOS Swift Playground
 
-You can copy the editor into a UIKit or SwiftUI playground quickly:
+Use an **iOS App Playground** (not a macOS playground) so UIKit/SwiftUI editor behavior matches.
 
-1. In Xcode, create **File → New → Playground → iOS App Playground**.
-2. Copy the following types from `Clauntty/Views/LeanEditorView.swift` into the playground source:
-   - `EditorDocument`
-   - `LeanEditorView`
-   - `EditorBridge`
-   - `SyntaxTextView`
-3. Set the playground live view/root view to `LeanEditorView()`.
-   - SwiftUI playgrounds: use `PlaygroundPage.current.setLiveView(LeanEditorView())` (or host in `UIHostingController`).
-4. Run the playground and edit text directly with multi-tab + toolbar controls.
+### 1) Create playground
+1. In Xcode: **File → New → Playground → iOS App Playground**.
+2. Name it anything (e.g. `LeanEditorPlayground`).
 
-> Note: the lean editor path is pure Swift/SwiftUI/UIKit and does not require SSH, rtach, or networking services.
+### 2) Copy these files (exact)
+Copy the following source files into the playground sources:
+
+1. `Clauntty/Views/KeyboardAccessoryView.swift`
+2. `Clauntty/Views/KeyboardAccessoryBarRepresentable.swift`
+3. `Clauntty/Views/EditorBridge.swift`
+4. `Clauntty/Views/SyntaxTextView.swift`
+5. `Clauntty/Views/LeanEditorView.swift`
+
+If your playground only has one file, paste in this order so types resolve in sequence.
+
+### 3) Add minimal logger shim (required by `KeyboardAccessoryView`)
+`KeyboardAccessoryView.swift` logs through `Logger.clauntty`. In an empty playground, add this tiny compatibility shim first:
+
+```swift
+import os.log
+
+extension Logger {
+    static let clauntty = Logger(subsystem: "Playground", category: "Editor")
+    func verbose(_ message: String) {}
+    func debugOnly(_ message: String) {}
+}
+```
+
+### 4) Add minimal speech shim (required by `KeyboardAccessoryView`)
+The accessory view references `SpeechManager.shared`. If you do not need voice features, add this no-op stub:
+
+```swift
+import Foundation
+import Combine
+
+@MainActor
+final class SpeechManager: ObservableObject {
+    static let shared = SpeechManager()
+    @Published var audioLevel: Float = 0
+    @Published var isModelReady: Bool = false
+    @Published var isRecording: Bool = false
+    @Published var isDownloading: Bool = false
+    @Published var downloadProgress: Float = 0
+
+    func startRecording() {}
+    func stopRecordingAndTranscribe() async -> String? { nil }
+    func cancelRecording() {}
+}
+```
+
+### 5) Set live view
+For playground live view/root view, use:
+
+```swift
+import SwiftUI
+import PlaygroundSupport
+
+PlaygroundPage.current.setLiveView(LeanEditorView())
+```
+
+You now have the same editor stack (tabs + syntax highlighting + existing accessory toolbar mechanism) running without SSH/rtach/network dependencies.
