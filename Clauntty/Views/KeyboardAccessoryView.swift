@@ -28,6 +28,11 @@ class KeyboardAccessoryView: UIView {
     /// Callback to unindent selected/current line
     var onUnindentLine: (() -> Void)?
 
+    /// When true, nipple controls line operations (up/down/indent/unindent) instead of cursor movement
+    var nippleControlsLineOps = false {
+        didSet { updateNippleInputRouting() }
+    }
+
     /// Callback for voice input (transcribed text)
     var onVoiceInput: ((String) -> Void)?
 
@@ -289,11 +294,30 @@ class KeyboardAccessoryView: UIView {
         nippleContainerView.translatesAutoresizingMaskIntoConstraints = false
         containerEffectView.contentView.addSubview(nippleContainerView)
 
-        nippleView.onArrowInput = { [weak self] direction in
-            self?.sendArrow(direction)
-        }
+        updateNippleInputRouting()
+
         nippleView.translatesAutoresizingMaskIntoConstraints = false
         nippleContainerView.addSubview(nippleView)
+    }
+
+    private func updateNippleInputRouting() {
+        nippleView.onArrowInput = { [weak self] direction in
+            self?.handleNippleDirection(direction)
+        }
+    }
+
+    private func handleNippleDirection(_ direction: ArrowNippleView.Direction) {
+        if nippleControlsLineOps {
+            switch direction {
+            case .up: onMoveLineUp?()
+            case .down: onMoveLineDown?()
+            case .right: onIndentLine?()
+            case .left: onUnindentLine?()
+            }
+            return
+        }
+
+        sendArrow(direction)
     }
 
     private func setupStackViews() {

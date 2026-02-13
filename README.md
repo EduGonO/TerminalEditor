@@ -11,6 +11,7 @@ This repo was simplified from a larger SSH/persistent-session terminal app into 
 - Syntax highlighting for Swift-like text
 - Existing keyboard accessory mechanism (`KeyboardAccessoryView`) wired to editor actions
 - Toolbar actions focused on editing: arrows, tab/enter, move line up/down, indent/outdent
+- Nipple mode toggle: default cursor control, optional line-edit mode (up/down=move line, left/right=unindent/indent)
 - Font controls in top bar: tap font button to cycle Mono/Sans/Serif, long-press to pick from menu, plus +/- for size
 
 ## What this version intentionally drops

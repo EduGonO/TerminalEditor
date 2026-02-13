@@ -33,6 +33,7 @@ final class EditorBridge: ObservableObject {
 
     @Published private(set) var fontStyle: EditorFontStyle = .mono
     @Published private(set) var fontSize: CGFloat = 15
+    @Published private(set) var nippleControlsLineOps = false
 
     private let minFontSize: CGFloat = 11
     private let maxFontSize: CGFloat = 28
@@ -65,6 +66,10 @@ final class EditorBridge: ObservableObject {
 
     func editorFont() -> UIFont {
         fontStyle.font(size: fontSize)
+    }
+
+    func toggleNippleMode() {
+        nippleControlsLineOps.toggle()
     }
 
     func insert(_ string: String) {
