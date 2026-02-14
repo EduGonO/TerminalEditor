@@ -9,7 +9,7 @@ This repo was simplified from a larger SSH/persistent-session terminal app into 
 - Multi-tab editing with swipe gestures
 - Native text editing + selection + long-press (`UITextView`)
 - Syntax highlighting for Swift-like text
-- Existing keyboard accessory mechanism (`KeyboardAccessoryView`) wired to editor actions
+- Existing keyboard accessory mechanism (now unified in `EditorInputComponents.swift`) wired to editor actions
 - Toolbar actions focused on editing: arrows, tab/enter, move line up/down, indent/outdent
 - Nipple mode toggle: default cursor control, optional line-edit mode (up/down=move line, left/right=unindent/indent)
 - Font controls in top bar: tap font button to cycle Mono/Sans/Serif, long-press to pick from menu, plus +/- for size
@@ -31,11 +31,8 @@ These are the exact files that make the editor-only flow work:
   - `Clauntty/ContentView.swift`
 - Editor surface
   - `Clauntty/Views/LeanEditorView.swift`
-  - `Clauntty/Views/SyntaxTextView.swift`
+  - `Clauntty/Views/EditorInputComponents.swift` (contains `SyntaxTextView` + keyboard accessory components)
   - `Clauntty/Views/EditorBridge.swift`
-- Existing toolbar mechanism reused
-  - `Clauntty/Views/KeyboardAccessoryView.swift`
-  - `Clauntty/Views/KeyboardAccessoryBarRepresentable.swift`
 
 ## Run in Xcode (app)
 
@@ -54,11 +51,9 @@ Use an **iOS App Playground** (not a macOS playground) so UIKit/SwiftUI editor b
 ### 2) Copy these files (exact)
 Copy the following source files into the playground sources:
 
-1. `Clauntty/Views/KeyboardAccessoryView.swift`
-2. `Clauntty/Views/KeyboardAccessoryBarRepresentable.swift`
-3. `Clauntty/Views/EditorBridge.swift`
-4. `Clauntty/Views/SyntaxTextView.swift`
-5. `Clauntty/Views/LeanEditorView.swift`
+1. `Clauntty/Views/EditorInputComponents.swift`
+2. `Clauntty/Views/EditorBridge.swift`
+3. `Clauntty/Views/LeanEditorView.swift`
 
 If your playground only has one file, paste in this order so types resolve in sequence.
 

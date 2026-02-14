@@ -41,6 +41,7 @@ struct LeanEditorView: View {
                 onMoveLineDown: { editorBridge.moveCurrentLineDown() },
                 onIndentLine: { editorBridge.indentCurrentLine() },
                 onUnindentLine: { editorBridge.unindentCurrentLine() },
+                onToggleNippleMode: { editorBridge.toggleNippleMode() },
                 nippleControlsLineOps: editorBridge.nippleControlsLineOps
             )
             .frame(height: 74)
@@ -95,11 +96,6 @@ struct LeanEditorView: View {
                     editorBridge.increaseFontSize()
                 } label: {
                     Image(systemName: "plus")
-                }
-                .buttonStyle(.bordered)
-
-                Button(editorBridge.nippleControlsLineOps ? "Nipple: Lines" : "Nipple: Cursor") {
-                    editorBridge.toggleNippleMode()
                 }
                 .buttonStyle(.bordered)
 
