@@ -16,6 +16,29 @@ class KeyboardAccessoryView: UIView {
     /// Callback to show keyboard (become first responder)
     var onShowKeyboard: (() -> Void)?
 
+    /// Callback to toggle nipple mode (cursor vs line ops)
+    var onToggleNippleMode: (() -> Void)?
+
+    /// Callback to move selected/current line up
+    var onMoveLineUp: (() -> Void)?
+
+    /// Callback to move selected/current line down
+    var onMoveLineDown: (() -> Void)?
+
+    /// Callback to indent selected/current line
+    var onIndentLine: (() -> Void)?
+
+    /// Callback to unindent selected/current line
+    var onUnindentLine: (() -> Void)?
+
+    /// When true, nipple controls line operations (up/down/indent/unindent) instead of cursor movement
+    var nippleControlsLineOps = false {
+        didSet {
+            updateNippleInputRouting()
+            updateMicButtonAppearance()
+        }
+    }
+
     /// Callback for voice input (transcribed text)
     var onVoiceInput: ((String) -> Void)?
 
@@ -277,11 +300,30 @@ class KeyboardAccessoryView: UIView {
         nippleContainerView.translatesAutoresizingMaskIntoConstraints = false
         containerEffectView.contentView.addSubview(nippleContainerView)
 
-        nippleView.onArrowInput = { [weak self] direction in
-            self?.sendArrow(direction)
-        }
+        updateNippleInputRouting()
+
         nippleView.translatesAutoresizingMaskIntoConstraints = false
         nippleContainerView.addSubview(nippleView)
+    }
+
+    private func updateNippleInputRouting() {
+        nippleView.onArrowInput = { [weak self] direction in
+            self?.handleNippleDirection(direction)
+        }
+    }
+
+    private func handleNippleDirection(_ direction: ArrowNippleView.Direction) {
+        if nippleControlsLineOps {
+            switch direction {
+            case .up: onMoveLineUp?()
+            case .down: onMoveLineDown?()
+            case .right: onIndentLine?()
+            case .left: onUnindentLine?()
+            }
+            return
+        }
+
+        sendArrow(direction)
     }
 
     private func setupStackViews() {
@@ -307,32 +349,16 @@ class KeyboardAccessoryView: UIView {
         // Leading spacer (creates gap at left edge)
         leftStackView.addArrangedSubview(leftLeadingSpacer)
 
-        // Mic button (replaces keyboard toggle)
+        // Nipple mode toggle button (replaces audio/mic button)
         updateMicButtonAppearance()
-        micButton.tintColor = .label
-        micButton.accessibilityIdentifier = "Mic"
-        micButton.addTarget(self, action: #selector(micTouchDown), for: .touchDown)
-        micButton.addTarget(self, action: #selector(micTouchUp), for: [.touchUpInside, .touchUpOutside])
-        micButton.addTarget(self, action: #selector(micTouchCancelled), for: .touchCancel)
+        micButton.accessibilityIdentifier = "NippleModeToggle"
+        micButton.addAction(UIAction { [weak self] _ in
+            self?.onToggleNippleMode?()
+        }, for: .touchUpInside)
 
-        // Setup download progress view (initially hidden)
-        downloadProgressView.isHidden = true
-        downloadProgressView.translatesAutoresizingMaskIntoConstraints = false
-
-        let micContainerStack = createButtonWithHint(micButton, hint: nil)
-        // Add progress view below the mic button stack
-        let micWithProgress = UIStackView(arrangedSubviews: [micContainerStack, downloadProgressView])
-        micWithProgress.axis = .vertical
-        micWithProgress.alignment = .center
-        micWithProgress.spacing = 2
-
-        NSLayoutConstraint.activate([
-            downloadProgressView.widthAnchor.constraint(equalToConstant: 24),
-            downloadProgressView.heightAnchor.constraint(equalToConstant: 4),
-        ])
-
-        leftStackView.addArrangedSubview(micWithProgress)
-        micContainer = micWithProgress
+        let modeContainer = createButtonWithHint(micButton, hint: nil)
+        leftStackView.addArrangedSubview(modeContainer)
+        micContainer = modeContainer
 
         // Esc button
         let escButton = createIconButton("escape", accessibilityId: "Esc", tooltip: "esc") { [weak self] in
@@ -386,25 +412,30 @@ class KeyboardAccessoryView: UIView {
         // Trailing spacer (creates gap before nipple)
         leftStackView.addArrangedSubview(leftTrailingSpacer)
 
-        // Right section buttons: spacer, ^C, ^O, ^B, Enter, spacer
+        // Right section buttons: spacer, line controls, indent controls, Enter, spacer
 
         // Leading spacer (creates gap after nipple)
         rightStackView.addArrangedSubview(rightLeadingSpacer)
 
-        let ctrlCButton = createTextButton("^C") { [weak self] in
-            self?.sendCtrlC()
+        let lineUpButton = createTextButton("Line↑") { [weak self] in
+            self?.onMoveLineUp?()
         }
-        rightStackView.addArrangedSubview(ctrlCButton)
+        rightStackView.addArrangedSubview(lineUpButton)
 
-        let ctrlOButton = createTextButton("^O") { [weak self] in
-            self?.sendCtrlO()
+        let lineDownButton = createTextButton("Line↓") { [weak self] in
+            self?.onMoveLineDown?()
         }
-        rightStackView.addArrangedSubview(ctrlOButton)
+        rightStackView.addArrangedSubview(lineDownButton)
 
-        let ctrlBButton = createTextButton("^B") { [weak self] in
-            self?.sendCtrlB()
+        let indentButton = createTextButton(">>") { [weak self] in
+            self?.onIndentLine?()
         }
-        rightStackView.addArrangedSubview(ctrlBButton)
+        rightStackView.addArrangedSubview(indentButton)
+
+        let outdentButton = createTextButton("<<") { [weak self] in
+            self?.onUnindentLine?()
+        }
+        rightStackView.addArrangedSubview(outdentButton)
 
         let enterButton = createIconButton("return", accessibilityId: "Enter", tooltip: "↵") { [weak self] in
             self?.sendEnter()
@@ -589,19 +620,9 @@ class KeyboardAccessoryView: UIView {
     }
 
     private func updateMicButtonAppearance() {
-        let iconName: String
-        let tintColor: UIColor
-
-        if isRecording {
-            iconName = "mic.fill"
-            tintColor = UIColor.systemBlue.withAlphaComponent(0.8)  // Light blue tint
-        } else if isSpeechModelDownloading {
-            iconName = "mic.fill"
-            tintColor = .systemBlue  // Blue while downloading
-        } else {
-            iconName = "mic.fill"
-            tintColor = isSpeechModelReady ? .label : .secondaryLabel
-        }
+        let iconName = nippleControlsLineOps ? "text.line.first.and.arrowtriangle.forward" : "cursorarrow.motionlines"
+        let bulletColor: UIColor = nippleControlsLineOps ? .systemOrange : .systemBlue
+        let backgroundColor = bulletColor.withAlphaComponent(0.16)
 
         micButton.setImage(
             UIImage(systemName: iconName)?.withConfiguration(
@@ -609,7 +630,12 @@ class KeyboardAccessoryView: UIView {
             ),
             for: .normal
         )
-        micButton.tintColor = tintColor
+        micButton.tintColor = bulletColor
+        micButton.backgroundColor = backgroundColor
+        micButton.layer.cornerRadius = nippleSize / 2
+        micButton.layer.borderWidth = 1
+        micButton.layer.borderColor = bulletColor.withAlphaComponent(0.45).cgColor
+        micButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
     }
 
     /// Called when keyboard visibility changes externally
@@ -1069,18 +1095,6 @@ class KeyboardAccessoryView: UIView {
         if isCtrlActive {
             isCtrlActive = false
         }
-    }
-
-    private func sendCtrlC() {
-        onKeyInput?(Data([0x03]))  // ETX
-    }
-
-    private func sendCtrlO() {
-        onKeyInput?(Data([0x0F]))  // SI (Ctrl+O)
-    }
-
-    private func sendCtrlB() {
-        onKeyInput?(Data([0x02]))  // STX (Ctrl+B)
     }
 
     private func sendEnter() {
@@ -1581,5 +1595,129 @@ private class CircularProgressView: UIView {
         super.traitCollectionDidChange(previousTraitCollection)
         trackLayer.backgroundColor = UIColor.secondarySystemFill.cgColor
         progressLayer.backgroundColor = UIColor.systemBlue.cgColor
+    }
+}
+
+
+import SwiftUI
+import UIKit
+
+struct KeyboardAccessoryBarRepresentable: UIViewRepresentable {
+    var onKeyData: (Data) -> Void
+    var onDismissKeyboard: () -> Void
+    var onShowKeyboard: () -> Void
+    var onMoveLineUp: () -> Void
+    var onMoveLineDown: () -> Void
+    var onIndentLine: () -> Void
+    var onUnindentLine: () -> Void
+    var onToggleNippleMode: () -> Void
+    var nippleControlsLineOps: Bool
+
+    func makeUIView(context: Context) -> KeyboardAccessoryView {
+        let view = KeyboardAccessoryView(frame: .zero)
+        view.onKeyInput = onKeyData
+        view.onDismissKeyboard = onDismissKeyboard
+        view.onShowKeyboard = onShowKeyboard
+        view.onMoveLineUp = onMoveLineUp
+        view.onMoveLineDown = onMoveLineDown
+        view.onIndentLine = onIndentLine
+        view.onUnindentLine = onUnindentLine
+        view.onToggleNippleMode = onToggleNippleMode
+        view.nippleControlsLineOps = nippleControlsLineOps
+        return view
+    }
+
+    func updateUIView(_ uiView: KeyboardAccessoryView, context: Context) {
+        uiView.onKeyInput = onKeyData
+        uiView.onDismissKeyboard = onDismissKeyboard
+        uiView.onShowKeyboard = onShowKeyboard
+        uiView.onMoveLineUp = onMoveLineUp
+        uiView.onMoveLineDown = onMoveLineDown
+        uiView.onIndentLine = onIndentLine
+        uiView.onUnindentLine = onUnindentLine
+        uiView.onToggleNippleMode = onToggleNippleMode
+        uiView.nippleControlsLineOps = nippleControlsLineOps
+    }
+}
+
+
+import SwiftUI
+import UIKit
+
+struct SyntaxTextView: UIViewRepresentable {
+    @Binding var text: String
+    var isFocused: Bool
+    @ObservedObject var bridge: EditorBridge
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.autocapitalizationType = .none
+        textView.autocorrectionType = .no
+        textView.smartDashesType = .no
+        textView.smartQuotesType = .no
+        textView.smartInsertDeleteType = .no
+        textView.backgroundColor = .clear
+        textView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
+        textView.text = text
+        applyHighlighting(to: textView)
+        return textView
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text {
+            uiView.text = text
+        }
+
+        applyHighlighting(to: uiView)
+
+        if isFocused {
+            bridge.activeTextView = uiView
+            if !uiView.isFirstResponder {
+                uiView.becomeFirstResponder()
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: SyntaxTextView
+        init(_ parent: SyntaxTextView) { self.parent = parent }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.bridge.activeTextView = textView
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+            parent.applyHighlighting(to: textView)
+        }
+    }
+
+    private func applyHighlighting(to textView: UITextView) {
+        let full = textView.text ?? ""
+        let attr = NSMutableAttributedString(string: full)
+        let baseRange = NSRange(location: 0, length: attr.length)
+
+        let editorFont = bridge.editorFont()
+        attr.addAttribute(.font, value: editorFont, range: baseRange)
+        attr.addAttribute(.foregroundColor, value: UIColor.label, range: baseRange)
+
+        color(pattern: "\\b(func|let|var|if|else|return|struct|class|import|enum|protocol|extension)\\b", in: full, attr: attr, color: .systemBlue)
+        color(pattern: "\"(\\\\.|[^\"\\\\])*\"", in: full, attr: attr, color: .systemGreen)
+        color(pattern: "//.*", in: full, attr: attr, color: .systemGray)
+
+        let selected = textView.selectedRange
+        textView.attributedText = attr
+        textView.selectedRange = selected
+    }
+
+    private func color(pattern: String, in text: String, attr: NSMutableAttributedString, color: UIColor) {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.anchorsMatchLines]) else { return }
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        regex.matches(in: text, options: [], range: range).forEach { match in
+            attr.addAttribute(.foregroundColor, value: color, range: match.range)
+        }
     }
 }
