@@ -1,6 +1,5 @@
 import UIKit
 import os.log
-import Combine
 
 /// Keyboard accessory bar with terminal-specific keys and arrow "nipple"
 /// iOS Notes-style pill shape with fixed center nipple and evenly distributed buttons
@@ -15,6 +14,23 @@ class KeyboardAccessoryView: UIView {
 
     /// Callback to show keyboard (become first responder)
     var onShowKeyboard: (() -> Void)?
+
+    /// Callback to move selected/current line up
+    var onMoveLineUp: (() -> Void)?
+
+    /// Callback to move selected/current line down
+    var onMoveLineDown: (() -> Void)?
+
+    /// Callback to indent selected/current line
+    var onIndentLine: (() -> Void)?
+
+    /// Callback to unindent selected/current line
+    var onUnindentLine: (() -> Void)?
+
+    /// When true, nipple controls line operations (up/down/indent/unindent) instead of cursor movement
+    var nippleControlsLineOps = false {
+        didSet { updateNippleInputRouting() }
+    }
 
     /// Callback for voice input (transcribed text)
     var onVoiceInput: ((String) -> Void)?
@@ -171,9 +187,6 @@ class KeyboardAccessoryView: UIView {
     /// Glow color for recording
     private let glowColor: UIColor = .systemBlue
 
-    /// Combine subscriptions for audio level updates
-    private var cancellables = Set<AnyCancellable>()
-
     // MARK: - Constraints
 
     private var containerLeadingConstraint: NSLayoutConstraint!
@@ -218,7 +231,6 @@ class KeyboardAccessoryView: UIView {
         setupButtons()
         setupConstraints()
         setupDismissGestures()
-        setupAudioLevelObserver()
     }
 
     // MARK: - Drag Handle Setup
@@ -249,15 +261,6 @@ class KeyboardAccessoryView: UIView {
         shadowHostView.layer.shadowOffset = .zero
     }
 
-    private func setupAudioLevelObserver() {
-        SpeechManager.shared.$audioLevel
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] level in
-                self?.updateGlowForAudioLevel(level)
-            }
-            .store(in: &cancellables)
-    }
-
     // MARK: - Container Setup
 
     private func setupContainerView() {
@@ -277,11 +280,32 @@ class KeyboardAccessoryView: UIView {
         nippleContainerView.translatesAutoresizingMaskIntoConstraints = false
         containerEffectView.contentView.addSubview(nippleContainerView)
 
-        nippleView.onArrowInput = { [weak self] direction in
-            self?.sendArrow(direction)
-        }
+        updateNippleInputRouting()
+
         nippleView.translatesAutoresizingMaskIntoConstraints = false
         nippleContainerView.addSubview(nippleView)
+    }
+
+    private func updateNippleInputRouting() {
+        nippleView.onArrowInput = { [weak self] direction in
+            self?.handleNippleDirection(direction)
+        }
+    }
+
+    private func handleNippleDirection(_ direction: ArrowNippleView.Direction) {
+        if nippleControlsLineOps {
+            nippleView.flashInteraction(strong: true)
+            switch direction {
+            case .up: onMoveLineUp?()
+            case .down: onMoveLineDown?()
+            case .right: onIndentLine?()
+            case .left: onUnindentLine?()
+            }
+            return
+        }
+
+        nippleView.flashInteraction(strong: false)
+        sendArrow(direction)
     }
 
     private func setupStackViews() {
@@ -386,25 +410,30 @@ class KeyboardAccessoryView: UIView {
         // Trailing spacer (creates gap before nipple)
         leftStackView.addArrangedSubview(leftTrailingSpacer)
 
-        // Right section buttons: spacer, ^C, ^O, ^B, Enter, spacer
+        // Right section buttons: spacer, line controls, indent controls, Enter, spacer
 
         // Leading spacer (creates gap after nipple)
         rightStackView.addArrangedSubview(rightLeadingSpacer)
 
-        let ctrlCButton = createTextButton("^C") { [weak self] in
-            self?.sendCtrlC()
+        let lineUpButton = createTextButton("Line↑") { [weak self] in
+            self?.onMoveLineUp?()
         }
-        rightStackView.addArrangedSubview(ctrlCButton)
+        rightStackView.addArrangedSubview(lineUpButton)
 
-        let ctrlOButton = createTextButton("^O") { [weak self] in
-            self?.sendCtrlO()
+        let lineDownButton = createTextButton("Line↓") { [weak self] in
+            self?.onMoveLineDown?()
         }
-        rightStackView.addArrangedSubview(ctrlOButton)
+        rightStackView.addArrangedSubview(lineDownButton)
 
-        let ctrlBButton = createTextButton("^B") { [weak self] in
-            self?.sendCtrlB()
+        let indentButton = createTextButton(">>") { [weak self] in
+            self?.onIndentLine?()
         }
-        rightStackView.addArrangedSubview(ctrlBButton)
+        rightStackView.addArrangedSubview(indentButton)
+
+        let outdentButton = createTextButton("<<") { [weak self] in
+            self?.onUnindentLine?()
+        }
+        rightStackView.addArrangedSubview(outdentButton)
 
         let enterButton = createIconButton("return", accessibilityId: "Enter", tooltip: "↵") { [weak self] in
             self?.sendEnter()
@@ -659,35 +688,6 @@ class KeyboardAccessoryView: UIView {
     }
 
     // MARK: - Glow Effect
-
-    private func updateGlowForAudioLevel(_ level: Float) {
-        guard isRecording else {
-            return
-        }
-
-        // Scale level for visibility (audio levels are often low)
-        let scaledLevel = min(level * 4, 1.0)
-
-        // Map audio level to blue intensity
-        // Low audio = subtle glow, high audio = strong glow
-        let minBorderWidth: CGFloat = 1.0
-        let maxBorderWidth: CGFloat = 3.5
-        let minShadowOpacity: Float = 0.3
-        let maxShadowOpacity: Float = 0.9
-        let minShadowRadius: CGFloat = 8
-        let maxShadowRadius: CGFloat = 20
-
-        let borderWidth = minBorderWidth + CGFloat(scaledLevel) * (maxBorderWidth - minBorderWidth)
-        let shadowOpacity = minShadowOpacity + scaledLevel * (maxShadowOpacity - minShadowOpacity)
-        let shadowRadius = minShadowRadius + CGFloat(scaledLevel) * (maxShadowRadius - minShadowRadius)
-
-        // Update border and shadow based on audio level
-        containerEffectView.layer.borderWidth = borderWidth
-        shadowHostView.layer.shadowOpacity = shadowOpacity
-        shadowHostView.layer.shadowRadius = shadowRadius
-        glowLayer.backgroundColor = glowColor.withAlphaComponent(CGFloat(shadowOpacity)).cgColor
-    }
-
     private func animateGlowOn() {
         // Set blue color and initial glow
         CATransaction.begin()
@@ -1071,18 +1071,6 @@ class KeyboardAccessoryView: UIView {
         }
     }
 
-    private func sendCtrlC() {
-        onKeyInput?(Data([0x03]))  // ETX
-    }
-
-    private func sendCtrlO() {
-        onKeyInput?(Data([0x0F]))  // SI (Ctrl+O)
-    }
-
-    private func sendCtrlB() {
-        onKeyInput?(Data([0x02]))  // STX (Ctrl+B)
-    }
-
     private func sendEnter() {
         onKeyInput?(Data([0x0D]))  // CR (Return/Enter)
     }
@@ -1415,6 +1403,21 @@ class ArrowNippleView: UIView {
         // Pan gesture for arrow input
         let panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         addGestureRecognizer(panGesture)
+    }
+
+    func flashInteraction(strong: Bool) {
+        let bgColor = strong ? UIColor.systemBlue.withAlphaComponent(0.32) : UIColor.systemBlue.withAlphaComponent(0.18)
+        let centerColor = strong ? UIColor.systemBlue : UIColor.systemBlue.withAlphaComponent(0.82)
+
+        UIView.animate(withDuration: 0.08, animations: {
+            self.backgroundColor = bgColor
+            self.nipple.backgroundColor = centerColor
+        }) { _ in
+            UIView.animate(withDuration: 0.18) {
+                self.backgroundColor = .secondarySystemFill
+                self.nipple.backgroundColor = .secondaryLabel
+            }
+        }
     }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
