@@ -122,15 +122,21 @@ Styles are applied automatically while typing using lightweight regex-based attr
 | Highlight | `::text::` or `==text==` | Yellow/olive highlight background. |
 | Strikethrough line | `☒ text` at line start | Whole line is gray + strikethrough. |
 | Comments | `// text` at line start | Gray comment line. |
+| Wiki Link | `[[Text inside]]` | Markers gray, inner text pink. |
+| Markdown Link | `[text](url)` | Brackets/parentheses gray, `text` blue, `url` gray underlined. |
+| Del Tag | `<del>text</del>` | Entire token gray monospace, slightly smaller. |
+| Quotes | `"text"`, `“text”`, `«text»`, `(text)`, `[text]` | Markers and inner text gray monospace. |
 
 ### Headings
 - `#` to `######` at line start produce heading levels (larger to smaller).
 
 ### Lists & Tasks
 - Bullets: `•`, `-`, `·`
+- `+` and `>` list markers (gray)
 - Numbered: `1.`
 - To-do: `□`
-- Done: `☒`
+- Done: `☒` and `☑`
+- Task forms: `- [ ]`, `- [x]`, `- [X]`, `- [!]` (monospace-aware styling)
 
 List/task markers are colored red (`#de4e69`).
 
@@ -138,6 +144,7 @@ List/task markers are colored red (`#de4e69`).
 - Money: `$10`, `$12.50`, `€500`
 - Time: `14:00`, `09:30`
 - Dates: `2025`, `Jun 6, 2025`, `01/01/2025`, `2025-06-06`
+- Extra date formats include `dd/dd/dd`, `dddd/dd/dd`, `dd/dd`, `dd-dd-dd`, `dd-dd-dddd`.
 - Tags: `#design`
 - Mentions: `@team`
 
