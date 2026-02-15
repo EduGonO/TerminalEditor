@@ -108,3 +108,42 @@ PlaygroundPage.current.setLiveView(LeanEditorView())
 ```
 
 You now have the same editor stack (tabs + syntax highlighting + line-move/indent toolbar + font family/size controls) running without SSH/rtach/network dependencies.
+
+
+## Live Markdown Styling (Lean & Fast)
+
+Styles are applied automatically while typing using lightweight regex-based attributed text updates.
+
+| Style | Markdown Syntax | Visual Result |
+|---|---|---|
+| Bold | `**text**` | Bold text; markers are gray + monospace. |
+| Italic | `*text*` | Italic text; markers are gray + monospace. |
+| Underline | `_text_` or `~text~` | Single underline. |
+| Highlight | `::text::` or `==text==` | Yellow/olive highlight background. |
+| Strikethrough line | `☒ text` at line start | Whole line is gray + strikethrough. |
+| Comments | `// text` at line start | Gray comment line. |
+
+### Headings
+- `#` to `######` at line start produce heading levels (larger to smaller).
+
+### Lists & Tasks
+- Bullets: `•`, `-`, `·`
+- Numbered: `1.`
+- To-do: `□`
+- Done: `☒`
+
+List/task markers are colored red (`#de4e69`).
+
+### Smart Data Detection
+- Money: `$10`, `$12.50`, `€500`
+- Time: `14:00`, `09:30`
+- Dates: `2025`, `Jun 6, 2025`, `01/01/2025`, `2025-06-06`
+- Tags: `#design`
+- Mentions: `@team`
+
+### Code
+- Inline code: `` `code` ``
+- Code block: triple backticks
+
+Inline/block code uses monospaced font + subtle background.
+
