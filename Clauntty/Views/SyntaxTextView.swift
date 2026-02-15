@@ -214,6 +214,22 @@ struct SyntaxTextView: UIViewRepresentable {
             ], range: match.range)
         }
 
+        // Hanging indent for all supported list/task prefixes
+        applyRegex(Regex.listPrefix, in: full) { match in
+            let lineRange = match.range(at: 0)
+            let prefixRange = match.range(at: 1)
+            guard prefixRange.location != NSNotFound else { return }
+
+            let prefix = (full as NSString).substring(with: prefixRange)
+            let prefixWidth = (prefix as NSString).size(withAttributes: [.font: monoFont]).width
+
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.firstLineHeadIndent = 0
+            paragraph.headIndent = prefixWidth
+
+            attr.addAttribute(.paragraphStyle, value: paragraph, range: lineRange)
+        }
+
         textView.attributedText = attr
         textView.selectedRange = selected
     }
@@ -293,6 +309,7 @@ private enum Regex {
     static let date = try! NSRegularExpression(pattern: #"\b\d{4}-\d{2}-\d{2}\b|\b\d{4}/\d{1,2}/\d{1,2}\b|\b\d{1,2}/\d{1,2}/\d{2,4}\b|\b\d{1,2}/\d{1,2}\b|\b\d{1,2}-\d{1,2}-\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+\d{4}\b|\b(19|20)\d{2}\b"#)
     static let tag = try! NSRegularExpression(pattern: #"(?<!\w)#\w+"#)
     static let mention = try! NSRegularExpression(pattern: #"(?<!\w)@\w+"#)
+    static let listPrefix = try! NSRegularExpression(pattern: #"(?m)^(\s*(?:[•\-·+>]|■|□|☑|☒|\d+\.|-\s*\[(?:\s|x|X|!)\])\s+)(.*)$"#)
 }
 
 private enum Palette {
