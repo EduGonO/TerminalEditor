@@ -41,6 +41,7 @@ struct LeanEditorView: View {
                 onMoveLineDown: { editorBridge.moveCurrentLineDown() },
                 onIndentLine: { editorBridge.indentCurrentLine() },
                 onUnindentLine: { editorBridge.unindentCurrentLine() },
+                onCyclePrefix: { editorBridge.cyclePrefixForCurrentSelection() },
                 nippleControlsLineOps: editorBridge.nippleControlsLineOps
             )
             .frame(height: 74)

@@ -27,6 +27,9 @@ class KeyboardAccessoryView: UIView {
     /// Callback to unindent selected/current line
     var onUnindentLine: (() -> Void)?
 
+    /// Callback to cycle list prefix state for current line/selection
+    var onCyclePrefix: (() -> Void)?
+
     /// When true, nipple controls line operations (up/down/indent/unindent) instead of cursor movement
     var nippleControlsLineOps = false {
         didSet { updateNippleInputRouting() }
@@ -434,6 +437,11 @@ class KeyboardAccessoryView: UIView {
             self?.onUnindentLine?()
         }
         rightStackView.addArrangedSubview(outdentButton)
+
+        let prefixButton = createTextButton("Prefix") { [weak self] in
+            self?.onCyclePrefix?()
+        }
+        rightStackView.addArrangedSubview(prefixButton)
 
         let enterButton = createIconButton("return", accessibilityId: "Enter", tooltip: "↵") { [weak self] in
             self?.sendEnter()

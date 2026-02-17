@@ -17,6 +17,7 @@ struct SyntaxTextView: UIViewRepresentable {
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: 10, left: 8, bottom: 10, right: 8)
         textView.text = text
+        context.coordinator.attachTapGesture(to: textView)
         applyHighlighting(to: textView)
         return textView
     }
@@ -41,6 +42,18 @@ struct SyntaxTextView: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: SyntaxTextView
         init(_ parent: SyntaxTextView) { self.parent = parent }
+
+        func attachTapGesture(to textView: UITextView) {
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handlePrefixTap(_:)))
+            tap.cancelsTouchesInView = false
+            textView.addGestureRecognizer(tap)
+        }
+
+        @objc private func handlePrefixTap(_ gesture: UITapGestureRecognizer) {
+            guard let textView = gesture.view as? UITextView else { return }
+            let point = gesture.location(in: textView)
+            _ = parent.bridge.handlePrefixTap(at: point, in: textView)
+        }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
             parent.bridge.activeTextView = textView

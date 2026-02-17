@@ -29,6 +29,10 @@ enum EditorFontStyle: String, CaseIterable {
 
 @MainActor
 final class EditorBridge: ObservableObject {
+    struct LineKey: Hashable {
+        let indent: String
+    }
+
     weak var activeTextView: UITextView?
 
     @Published private(set) var fontStyle: EditorFontStyle = .mono
@@ -37,6 +41,13 @@ final class EditorBridge: ObservableObject {
 
     private let minFontSize: CGFloat = 11
     private let maxFontSize: CGFloat = 28
+
+    private var rememberedBasePrefixByLineKey: [LineKey: String] = [:]
+    private var taskModeByLineKey: [LineKey: Bool] = [:]
+
+    private let basePrefixes = ["-", "*", "•", "·", "+", ">"]
+    private let altPrefixes = ["□", "☒", "■"]
+    private let taskPrefixes = ["-", "- [x]", "- [!]"]
 
     func dismissKeyboard() {
         activeTextView?.resignFirstResponder()
@@ -146,6 +157,200 @@ final class EditorBridge: ObservableObject {
         }
     }
 
+
+    func cyclePrefixForCurrentSelection() {
+        transformCurrentLines { line in
+            let key = LineKey(indent: leadingWhitespace(of: line))
+            let oldPrefixLen = prefixTokenAndSpacingLength(in: line)
+            let newLine = cyclePrefix(for: line, lineKey: key)
+            let newPrefixLen = prefixTokenAndSpacingLength(in: newLine)
+            return (newLine, newPrefixLen - oldPrefixLen)
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    /// Tap handling entrypoint from TextKit hit-testing. Returns true when a prefix was cycled.
+    func handlePrefixTap(at point: CGPoint, in textView: UITextView) -> Bool {
+        guard let (lineRange, prefixRange) = tappablePrefixRange(at: point, in: textView) else { return false }
+
+        let ns = (textView.text ?? "") as NSString
+        let line = ns.substring(with: lineRange)
+        let key = LineKey(indent: leadingWhitespace(of: line))
+        let cycled = cyclePrefix(for: line, lineKey: key)
+        guard cycled != line else { return false }
+
+        let oldPrefixLen = prefixRange.length
+        let newPrefixLen = prefixTokenAndSpacingLength(in: cycled)
+        let delta = newPrefixLen - oldPrefixLen
+
+        let originalSelection = textView.selectedRange
+        let mutable = NSMutableString(string: textView.text ?? "")
+        mutable.replaceCharacters(in: lineRange, with: cycled)
+        textView.text = mutable as String
+
+        let remappedStart = remapSingleLineSelection(originalSelection.location, lineRange: lineRange, prefixRange: prefixRange, delta: delta)
+        let remappedEnd = remapSingleLineSelection(originalSelection.location + originalSelection.length, lineRange: lineRange, prefixRange: prefixRange, delta: delta)
+        let clampedStart = max(0, min(remappedStart, mutable.length))
+        let clampedEnd = max(clampedStart, min(remappedEnd, mutable.length))
+        textView.selectedRange = NSRange(location: clampedStart, length: clampedEnd - clampedStart)
+        textView.delegate?.textViewDidChange?(textView)
+
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        return true
+    }
+
+    func cyclePrefix(for line: String, lineKey: LineKey) -> String {
+        let parsed = parsePrefix(in: line)
+
+        func makeLine(prefix: String) -> String {
+            return parsed.indent + prefix + " " + parsed.content
+        }
+
+        if parsed.family == .task, let token = parsed.prefixToken {
+            taskModeByLineKey[lineKey] = true
+            if token == "- [x]" || token == "- [X]" { return makeLine(prefix: "- [!]") }
+            if token == "- [!]" { return makeLine(prefix: "-") }
+            return makeLine(prefix: "- [x]")
+        }
+
+        if parsed.family == .alt, let token = parsed.prefixToken {
+            taskModeByLineKey[lineKey] = false
+            if token == "□" { return makeLine(prefix: "☒") }
+            if token == "☒" { return makeLine(prefix: "■") }
+            let base = rememberedBasePrefixByLineKey[lineKey] ?? "-"
+            return makeLine(prefix: base)
+        }
+
+        if parsed.family == .base, let token = parsed.prefixToken {
+            if token == "-", taskModeByLineKey[lineKey] == true {
+                return makeLine(prefix: "- [x]")
+            }
+
+            rememberedBasePrefixByLineKey[lineKey] = token
+            taskModeByLineKey[lineKey] = false
+            return makeLine(prefix: "□")
+        }
+
+        let base = rememberedBasePrefixByLineKey[lineKey] ?? "-"
+        taskModeByLineKey[lineKey] = false
+        return parsed.indent + base + " " + parsed.restWithoutIndent
+    }
+
+    private func tappablePrefixRange(at point: CGPoint, in textView: UITextView) -> (NSRange, NSRange)? {
+        let lm = textView.layoutManager
+        let tc = textView.textContainer
+
+        var location = point
+        location.x -= textView.textContainerInset.left
+        location.y -= textView.textContainerInset.top
+
+        let charIndex = lm.characterIndex(for: location, in: tc, fractionOfDistanceBetweenInsertionPoints: nil)
+        let ns = (textView.text ?? "") as NSString
+        guard charIndex <= ns.length else { return nil }
+
+        let lineRange = ns.lineRange(for: NSRange(location: charIndex, length: 0))
+        let lineText = ns.substring(with: lineRange)
+        let parsed = parsePrefix(in: lineText)
+        guard let prefixToken = parsed.prefixToken else { return nil }
+
+        let prefixLength = (prefixToken + " ").utf16.count
+        let prefixRange = NSRange(location: lineRange.location + parsed.indent.utf16.count, length: prefixLength)
+
+        let glyphRange = lm.glyphRange(forCharacterRange: prefixRange, actualCharacterRange: nil)
+        var rect = lm.boundingRect(forGlyphRange: glyphRange, in: tc)
+        rect = rect.insetBy(dx: -8, dy: -6)
+
+        if rect.contains(location) {
+            return (lineRange, prefixRange)
+        }
+        return nil
+    }
+
+    private func remapSingleLineSelection(_ location: Int, lineRange: NSRange, prefixRange: NSRange, delta: Int) -> Int {
+        if location <= lineRange.location { return location }
+        if location <= prefixRange.location + prefixRange.length {
+            return max(prefixRange.location, location + delta)
+        }
+        return location + delta
+    }
+
+    private enum PrefixFamily { case base, alt, task, none }
+
+    private struct ParsedPrefix {
+        let indent: String
+        let restWithoutIndent: String
+        let prefixToken: String?
+        let content: String
+        let family: PrefixFamily
+    }
+
+    private func parsePrefix(in line: String) -> ParsedPrefix {
+        let indent = leadingWhitespace(of: line)
+        let rest = String(line.dropFirst(indent.count))
+
+        let taskChecks = ["- [x] ", "- [X] ", "- [!] "]
+        for token in taskChecks {
+            if rest.hasPrefix(token) {
+                let canonical = token.contains("[X]") ? "- [X]" : String(token.dropLast())
+                let content = String(rest.dropFirst(token.count))
+                return .init(indent: indent, restWithoutIndent: rest, prefixToken: canonical, content: content, family: .task)
+            }
+        }
+
+        for p in taskPrefixes {
+            let literal = p + " "
+            if rest.hasPrefix(literal) {
+                let content = String(rest.dropFirst(literal.count))
+                return .init(indent: indent, restWithoutIndent: rest, prefixToken: p, content: content, family: .task)
+            }
+        }
+
+        for p in altPrefixes {
+            let literal = p + " "
+            if rest.hasPrefix(literal) {
+                let content = String(rest.dropFirst(literal.count))
+                return .init(indent: indent, restWithoutIndent: rest, prefixToken: p, content: content, family: .alt)
+            }
+        }
+
+        for p in basePrefixes {
+            let literal = p + " "
+            if rest.hasPrefix(literal) {
+                let content = String(rest.dropFirst(literal.count))
+                return .init(indent: indent, restWithoutIndent: rest, prefixToken: p, content: content, family: .base)
+            }
+        }
+
+        if let numberPrefix = numberedPrefix(in: rest) {
+            let literal = numberPrefix + " "
+            let content = String(rest.dropFirst(literal.count))
+            return .init(indent: indent, restWithoutIndent: rest, prefixToken: numberPrefix, content: content, family: .base)
+        }
+
+        return .init(indent: indent, restWithoutIndent: rest, prefixToken: nil, content: rest, family: .none)
+    }
+
+    private func leadingWhitespace(of line: String) -> String {
+        String(line.prefix { $0 == " " || $0 == "	" })
+    }
+
+    private func numberedPrefix(in rest: String) -> String? {
+        var digits = ""
+        for ch in rest {
+            if ch.isNumber { digits.append(ch); continue }
+            if ch == "." { break }
+            return nil
+        }
+        guard !digits.isEmpty else { return nil }
+        let prefix = digits + "."
+        return rest.hasPrefix(prefix + " ") ? prefix : nil
+    }
+
+    private func prefixTokenAndSpacingLength(in line: String) -> Int {
+        let parsed = parsePrefix(in: line)
+        guard let token = parsed.prefixToken else { return 0 }
+        return token.utf16.count + 1
+    }
     private func moveCurrentLine(offset: Int) {
         guard let textView = activeTextView else { return }
         let text = textView.text ?? ""

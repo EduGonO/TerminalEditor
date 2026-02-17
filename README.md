@@ -154,3 +154,8 @@ List/task markers are colored red (`#de4e69`).
 
 Inline/block code uses monospaced font + subtle background.
 
+
+### Prefix cycling interactions
+- Toolbar: use **Prefix** button to cycle list/task prefix state for current line selection.
+- Native touch: tap directly on prefix characters at line start (e.g. `-`, `□`, `■`, `- [x]`) to cycle via the same state engine.
+- Both entry points share one cycle implementation for deterministic behavior.
