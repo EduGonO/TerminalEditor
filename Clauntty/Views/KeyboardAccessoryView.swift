@@ -30,9 +30,15 @@ class KeyboardAccessoryView: UIView {
     /// Callback to cycle list prefix state for current line/selection
     var onCyclePrefix: (() -> Void)?
 
+    /// Callback to toggle nipple mode between cursor and line operations
+    var onToggleNippleMode: (() -> Void)?
+
     /// When true, nipple controls line operations (up/down/indent/unindent) instead of cursor movement
     var nippleControlsLineOps = false {
-        didSet { updateNippleInputRouting() }
+        didSet {
+            updateNippleInputRouting()
+            updateNippleModeButton()
+        }
     }
 
     /// Callback for voice input (transcribed text)
@@ -150,6 +156,9 @@ class KeyboardAccessoryView: UIView {
 
     /// Tab button reference for tooltip positioning
     private let tabButton = UIButton(type: .system)
+
+    /// Mode toggle button for nipple behavior
+    private let nippleModeButton = UIButton(type: .system)
 
     /// Tab container reference for expanded hit area
     private var tabContainer: UIView?
@@ -443,6 +452,14 @@ class KeyboardAccessoryView: UIView {
         }
         rightStackView.addArrangedSubview(prefixButton)
 
+        updateNippleModeButton()
+        nippleModeButton.accessibilityIdentifier = "NippleMode"
+        nippleModeButton.addAction(UIAction { [weak self] _ in
+            self?.onToggleNippleMode?()
+        }, for: .touchUpInside)
+        let modeContainer = createButtonWithHint(nippleModeButton, hint: nil)
+        rightStackView.addArrangedSubview(modeContainer)
+
         let enterButton = createIconButton("return", accessibilityId: "Enter", tooltip: "↵") { [weak self] in
             self?.sendEnter()
         }
@@ -615,6 +632,18 @@ class KeyboardAccessoryView: UIView {
         stack.alignment = .center
         stack.spacing = 1
         return stack
+    }
+
+
+    private func updateNippleModeButton() {
+        let symbol = nippleControlsLineOps ? "text.alignleft" : "cursorarrow"
+        nippleModeButton.setImage(
+            UIImage(systemName: symbol)?.withConfiguration(
+                UIImage.SymbolConfiguration(pointSize: iconSize, weight: .semibold)
+            ),
+            for: .normal
+        )
+        nippleModeButton.tintColor = .label
     }
 
     private func updateCtrlButton() {

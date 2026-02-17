@@ -10,6 +10,7 @@ struct KeyboardAccessoryBarRepresentable: UIViewRepresentable {
     var onIndentLine: () -> Void
     var onUnindentLine: () -> Void
     var onCyclePrefix: () -> Void
+    var onToggleNippleMode: () -> Void
     var nippleControlsLineOps: Bool
 
     func makeUIView(context: Context) -> KeyboardAccessoryView {
@@ -22,6 +23,7 @@ struct KeyboardAccessoryBarRepresentable: UIViewRepresentable {
         view.onIndentLine = onIndentLine
         view.onUnindentLine = onUnindentLine
         view.onCyclePrefix = onCyclePrefix
+        view.onToggleNippleMode = onToggleNippleMode
         view.nippleControlsLineOps = nippleControlsLineOps
         return view
     }
@@ -35,6 +37,7 @@ struct KeyboardAccessoryBarRepresentable: UIViewRepresentable {
         uiView.onIndentLine = onIndentLine
         uiView.onUnindentLine = onUnindentLine
         uiView.onCyclePrefix = onCyclePrefix
+        uiView.onToggleNippleMode = onToggleNippleMode
         uiView.nippleControlsLineOps = nippleControlsLineOps
     }
 }

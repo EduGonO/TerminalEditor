@@ -159,3 +159,5 @@ Inline/block code uses monospaced font + subtle background.
 - Toolbar: use **Prefix** button to cycle list/task prefix state for current line selection.
 - Native touch: tap directly on prefix characters at line start (e.g. `-`, `□`, `■`, `- [x]`) to cycle via the same state engine.
 - Both entry points share one cycle implementation for deterministic behavior.
+
+- Nipple mode toggle is available as a keyboard toolbar action (SF symbol) instead of top-bar text toggle.

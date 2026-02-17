@@ -42,12 +42,9 @@ final class EditorBridge: ObservableObject {
     private let minFontSize: CGFloat = 11
     private let maxFontSize: CGFloat = 28
 
-    private var rememberedBasePrefixByLineKey: [LineKey: String] = [:]
-    private var taskModeByLineKey: [LineKey: Bool] = [:]
+    private let cycleOrder = ["", "-", "□", "■", "☒"]
+    private let aliasToDash = Set(["*", "•", "·", "+", ">", "- [ ]", "- [x]", "- [X]", "- [!]"])
 
-    private let basePrefixes = ["-", "*", "•", "·", "+", ">"]
-    private let altPrefixes = ["□", "☒", "■"]
-    private let taskPrefixes = ["-", "- [x]", "- [!]"]
 
     func dismissKeyboard() {
         activeTextView?.resignFirstResponder()
@@ -125,7 +122,7 @@ final class EditorBridge: ObservableObject {
         transformCurrentLines { line in
             ("    " + line, 4)
         }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     func unindentCurrentLine() {
@@ -166,7 +163,7 @@ final class EditorBridge: ObservableObject {
             let newPrefixLen = prefixTokenAndSpacingLength(in: newLine)
             return (newLine, newPrefixLen - oldPrefixLen)
         }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     /// Tap handling entrypoint from TextKit hit-testing. Returns true when a prefix was cycled.
@@ -195,45 +192,20 @@ final class EditorBridge: ObservableObject {
         textView.selectedRange = NSRange(location: clampedStart, length: clampedEnd - clampedStart)
         textView.delegate?.textViewDidChange?(textView)
 
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         return true
     }
 
     func cyclePrefix(for line: String, lineKey: LineKey) -> String {
+        _ = lineKey
         let parsed = parsePrefix(in: line)
+        let current = normalizedCycleToken(parsed.prefixToken)
+        let next = nextCycleToken(after: current)
 
-        func makeLine(prefix: String) -> String {
-            return parsed.indent + prefix + " " + parsed.content
+        if next.isEmpty {
+            return parsed.indent + parsed.content
         }
-
-        if parsed.family == .task, let token = parsed.prefixToken {
-            taskModeByLineKey[lineKey] = true
-            if token == "- [x]" || token == "- [X]" { return makeLine(prefix: "- [!]") }
-            if token == "- [!]" { return makeLine(prefix: "-") }
-            return makeLine(prefix: "- [x]")
-        }
-
-        if parsed.family == .alt, let token = parsed.prefixToken {
-            taskModeByLineKey[lineKey] = false
-            if token == "□" { return makeLine(prefix: "☒") }
-            if token == "☒" { return makeLine(prefix: "■") }
-            let base = rememberedBasePrefixByLineKey[lineKey] ?? "-"
-            return makeLine(prefix: base)
-        }
-
-        if parsed.family == .base, let token = parsed.prefixToken {
-            if token == "-", taskModeByLineKey[lineKey] == true {
-                return makeLine(prefix: "- [x]")
-            }
-
-            rememberedBasePrefixByLineKey[lineKey] = token
-            taskModeByLineKey[lineKey] = false
-            return makeLine(prefix: "□")
-        }
-
-        let base = rememberedBasePrefixByLineKey[lineKey] ?? "-"
-        taskModeByLineKey[lineKey] = false
-        return parsed.indent + base + " " + parsed.restWithoutIndent
+        return parsed.indent + next + " " + parsed.content
     }
 
     private func tappablePrefixRange(at point: CGPoint, in textView: UITextView) -> (NSRange, NSRange)? {
@@ -274,60 +246,44 @@ final class EditorBridge: ObservableObject {
         return location + delta
     }
 
-    private enum PrefixFamily { case base, alt, task, none }
-
     private struct ParsedPrefix {
         let indent: String
         let restWithoutIndent: String
         let prefixToken: String?
         let content: String
-        let family: PrefixFamily
     }
 
     private func parsePrefix(in line: String) -> ParsedPrefix {
         let indent = leadingWhitespace(of: line)
         let rest = String(line.dropFirst(indent.count))
 
-        let taskChecks = ["- [x] ", "- [X] ", "- [!] "]
-        for token in taskChecks {
-            if rest.hasPrefix(token) {
-                let canonical = token.contains("[X]") ? "- [X]" : String(token.dropLast())
-                let content = String(rest.dropFirst(token.count))
-                return .init(indent: indent, restWithoutIndent: rest, prefixToken: canonical, content: content, family: .task)
-            }
-        }
-
-        for p in taskPrefixes {
-            let literal = p + " "
+        let prefixCandidates = ["- [ ]", "- [x]", "- [X]", "- [!]", "-", "*", "•", "·", "+", ">", "□", "■", "☒", "☑"]
+        for token in prefixCandidates {
+            let literal = token + " "
             if rest.hasPrefix(literal) {
-                let content = String(rest.dropFirst(literal.count))
-                return .init(indent: indent, restWithoutIndent: rest, prefixToken: p, content: content, family: .task)
-            }
-        }
-
-        for p in altPrefixes {
-            let literal = p + " "
-            if rest.hasPrefix(literal) {
-                let content = String(rest.dropFirst(literal.count))
-                return .init(indent: indent, restWithoutIndent: rest, prefixToken: p, content: content, family: .alt)
-            }
-        }
-
-        for p in basePrefixes {
-            let literal = p + " "
-            if rest.hasPrefix(literal) {
-                let content = String(rest.dropFirst(literal.count))
-                return .init(indent: indent, restWithoutIndent: rest, prefixToken: p, content: content, family: .base)
+                return .init(indent: indent, restWithoutIndent: rest, prefixToken: token, content: String(rest.dropFirst(literal.count)))
             }
         }
 
         if let numberPrefix = numberedPrefix(in: rest) {
             let literal = numberPrefix + " "
-            let content = String(rest.dropFirst(literal.count))
-            return .init(indent: indent, restWithoutIndent: rest, prefixToken: numberPrefix, content: content, family: .base)
+            return .init(indent: indent, restWithoutIndent: rest, prefixToken: numberPrefix, content: String(rest.dropFirst(literal.count)))
         }
 
-        return .init(indent: indent, restWithoutIndent: rest, prefixToken: nil, content: rest, family: .none)
+        return .init(indent: indent, restWithoutIndent: rest, prefixToken: nil, content: rest)
+    }
+
+    private func normalizedCycleToken(_ token: String?) -> String {
+        guard let token else { return "" }
+        if cycleOrder.contains(token) { return token }
+        if aliasToDash.contains(token) { return "-" }
+        if token.last == ".", token.dropLast().allSatisfy({ $0.isNumber }) { return "-" }
+        return ""
+    }
+
+    private func nextCycleToken(after token: String) -> String {
+        guard let idx = cycleOrder.firstIndex(of: token) else { return "-" }
+        return cycleOrder[(idx + 1) % cycleOrder.count]
     }
 
     private func leadingWhitespace(of line: String) -> String {
